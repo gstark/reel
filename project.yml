@@ -1,0 +1,95 @@
+name: Reel
+options:
+  bundleIdPrefix: com.gstark
+  deploymentTarget:
+    macOS: "14.0"
+packages:
+  # libmpv and FFmpeg as prebuilt static xcframeworks (LGPL build).
+  # Run `just update-dependencies` to move to the newest release.
+  MPVKit:
+    url: https://github.com/mpvkit/MPVKit
+    exactVersion: 1.1.0-n9.0.2
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Reel:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: MPVKit
+        product: MPVKit
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: Reel
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.video
+        NSPrincipalClass: NSApplication
+        NSHighResolutionCapable: true
+        # Video types conform to public.movie, so the first entry lets Reel open every video type.
+        # Its rank is Alternate, so Reel does not become the default for types not in the second entry.
+        # The second entry lists the video extensions Reel opens by default. scripts/set-default-player.swift
+        # reads it and makes Reel the default app for each video type that claims one of these extensions.
+        # It leaves out .ts and .mts, because TypeScript files use those extensions.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Video
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.movie
+              - public.video
+              - org.matroska.mkv
+              - org.xiph.ogv
+              - com.gstark.reel.video
+          - CFBundleTypeName: Video files
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Default
+            CFBundleTypeExtensions: [
+              3g2, 3gp, 3gpp, 3gpp2, amv, asf, avi, bik, divx, dv, dvr-ms, evo, f4p, f4v, flv,
+              h264, h265, hevc, ivf, m1v, m2p, m2t, m2ts, m2v, m4v, mj2, mjpeg, mjpg, mk3d, mkv,
+              mod, mov, mp2v, mp4, mp4v, mpe, mpeg, mpg, mqv, mxf, nsv, nut, nuv, obu, ogm,
+              ogv, qt, rm, rmvb, roq, rv, smk, tod, trp, vob, vro, webm, wm, wmv, wtv, xvid, y4m]
+          - CFBundleTypeName: Audio
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.audio
+              - public.audiovisual-content
+        # Types for video extensions that macOS does not declare. Without these, the files
+        # get a dynamic type, or a type from another player (IINA, Beamer) that goes away with it.
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.matroska.mkv
+            UTTypeDescription: Matroska Video
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification:
+              public.filename-extension: [mkv, mk3d]
+          - UTTypeIdentifier: org.xiph.ogv
+            UTTypeDescription: Ogg Video
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification:
+              public.filename-extension: [ogv, ogm]
+          - UTTypeIdentifier: com.gstark.reel.video
+            UTTypeDescription: Video
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification:
+              public.filename-extension: [
+                3gpp2, amv, bik, divx, dvr-ms, evo, h264, h265, hevc, ivf, m1v, m2p, m2t, mj2,
+                mjpeg, mjpg, mod, mp2v, mp4v, mqv, nsv, nut, nuv, obu, roq, rv, smk, tod, trp,
+                vob, vro, wtv, xvid, y4m]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gstark.Reel
+        ASSETCATALOG_COMPILER_APPICON_NAME: Reel
+        GCC_PREPROCESSOR_DEFINITIONS: GL_SILENCE_DEPRECATION=1
+        OTHER_SWIFT_FLAGS: -Xcc -DGL_SILENCE_DEPRECATION
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        GENERATE_INFOPLIST_FILE: NO
