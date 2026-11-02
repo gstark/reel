@@ -18,10 +18,13 @@ enum FrameGrabber {
         let errorDescription: String?
     }
 
-    /// - Parameter fileName: Gets the frame time and returns a file name for it.
-    static func grab(_ source: URL, at time: Double, before: Int, after: Int,
+    /// - Parameters:
+    ///   - after: The number of frames after the frame at `time`.
+    ///   - end: Stop at the frame that starts at this time, also when `after` is larger.
+    ///   - fileName: Gets the frame time and returns a file name for it.
+    static func grab(_ source: URL, at time: Double, before: Int, after: Int, through end: Double = .infinity,
                      into folder: URL, fileName: (Double) -> String) throws -> [Frame] {
-        let session = try Session(source: source, start: time)
+        let session = try MPVSession(source: source, start: time)
         defer { session.close() }
         // The frame mpv shows for `time`. Count "after" frames from this one.
         guard let anchor = session.position else { throw Failure(errorDescription: "mpv has no position.") }
@@ -45,12 +48,8 @@ enum FrameGrabber {
 
             // Stop after `after` frames past the paused frame.
             let pastPause = frames.filter { $0.time > anchor }.count
-            if pastPause >= after { break }
-
-            session.command("frame-step")
-            let advanced = { session.position.map { $0 > position } ?? false }
-            _ = session.waitUntil(timeout: 3) { advanced() || session.isAtEnd }
-            guard advanced() else { break }
+            if pastPause >= after || position >= end - 0.0005 { break }
+            guard session.stepForward(from: position) else { break }
         }
         return frames
     }
@@ -65,7 +64,7 @@ enum FrameGrabber {
 }
 
 /// A hidden, paused mpv instance with no video or audio output.
-private final class Session {
+final class MPVSession {
     private let handle: OpaquePointer
 
     init(source: URL, start: Double) throws {
@@ -101,6 +100,14 @@ private final class Session {
     var isAtEnd: Bool {
         var value: Int32 = 0
         return mpv_get_property(handle, "eof-reached", MPV_FORMAT_FLAG, &value) >= 0 && value != 0
+    }
+
+    /// Show the next frame. Returns false at the end of the file.
+    func stepForward(from position: Double) -> Bool {
+        command("frame-step")
+        let advanced = { self.position.map { $0 > position } ?? false }
+        _ = waitUntil(timeout: 3) { advanced() || self.isAtEnd }
+        return advanced()
     }
 
     @discardableResult

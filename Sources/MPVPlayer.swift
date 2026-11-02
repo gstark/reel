@@ -8,6 +8,9 @@ final class MPVPlayer {
     private(set) var position: Double = 0
     private(set) var duration: Double = 0
     private(set) var isPaused = false
+    private(set) var speed: Double = 1
+    /// False while mpv plays backward (`play-direction=backward`).
+    private(set) var isForward = true
     private(set) var videoSize: CGSize?
 
     var onStateChange: (() -> Void)?
@@ -37,6 +40,8 @@ final class MPVPlayer {
         mpv_observe_property(handle, 0, "time-pos", MPV_FORMAT_DOUBLE)
         mpv_observe_property(handle, 0, "duration", MPV_FORMAT_DOUBLE)
         mpv_observe_property(handle, 0, "pause", MPV_FORMAT_FLAG)
+        mpv_observe_property(handle, 0, "speed", MPV_FORMAT_DOUBLE)
+        mpv_observe_property(handle, 0, "play-direction", MPV_FORMAT_STRING)
         mpv_observe_property(handle, 0, "dwidth", MPV_FORMAT_INT64)
         mpv_observe_property(handle, 0, "dheight", MPV_FORMAT_INT64)
 
@@ -62,8 +67,21 @@ final class MPVPlayer {
         command("loadfile", url.isFileURL ? url.path : url.absoluteString)
     }
 
+    /// Play resumes forward at normal speed.
     func togglePause() {
-        command("cycle", "pause")
+        if isPaused { play(forward: true, speed: 1) } else { pause() }
+    }
+
+    func play(forward: Bool, speed: Double) {
+        if forward != isForward { command("set", "play-direction", forward ? "forward" : "backward") }
+        if speed != self.speed { command("set", "speed", String(speed)) }
+        command("set", "pause", "no")
+    }
+
+    /// Pause and go back to normal speed.
+    func stop() {
+        pause()
+        if speed != 1 { command("set", "speed", "1") }
     }
 
     func pause() {
@@ -81,13 +99,26 @@ final class MPVPlayer {
     }
 
     func stepFrame(forward: Bool) {
-        command(forward ? "frame-step" : "frame-back-step")
+        // In backward playback mode, mpv swaps the direction of the two commands.
+        command(forward == isForward ? "frame-step" : "frame-back-step")
+    }
+
+    /// Loop playback between two times. nil turns the loop off.
+    func setLoop(_ range: ClosedRange<Double>?) {
+        command("set", "ab-loop-a", range.map { String($0.lowerBound) } ?? "no")
+        command("set", "ab-loop-b", range.map { String($0.upperBound) } ?? "no")
     }
 
     func string(_ property: String) -> String? {
         guard let handle, let value = mpv_get_property_string(handle, property) else { return nil }
         defer { mpv_free(value) }
         return String(cString: value)
+    }
+
+    func double(_ property: String) -> Double? {
+        guard let handle else { return nil }
+        var value = 0.0
+        return mpv_get_property(handle, property, MPV_FORMAT_DOUBLE, &value) >= 0 ? value : nil
     }
 
     func int(_ property: String) -> Int? {
@@ -138,6 +169,11 @@ final class MPVPlayer {
             duration = data?.load(as: Double.self) ?? 0
         case "pause":
             isPaused = (data?.load(as: Int32.self) ?? 0) != 0
+        case "speed":
+            speed = data?.load(as: Double.self) ?? 1
+        case "play-direction":
+            let value = data?.load(as: UnsafePointer<CChar>?.self).map { String(cString: $0) }
+            isForward = value != "backward"
         case "dwidth", "dheight":
             let value = data?.load(as: Int64.self) ?? 0
             if name == "dwidth" { displayWidth = value } else { displayHeight = value }

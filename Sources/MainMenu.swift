@@ -35,6 +35,7 @@ enum MainMenu {
         let menu = NSMenu(title: "Edit")
         menu.addItem(item("Copy Frame", #selector(PlayerWindowController.copy(_:)), "c", [.command]))
         menu.addItem(item("Copy Frames Around Pause", #selector(PlayerWindowController.copyFramesAroundPause(_:)), "c", [.command, .shift]))
+        menu.addItem(item("Copy Frames from In to Out", #selector(PlayerWindowController.copyMarkedFrames(_:)), "c", [.command, .option]))
         return menu
     }
 
@@ -43,6 +44,11 @@ enum MainMenu {
         let right = String(UnicodeScalar(NSRightArrowFunctionKey)!)
         let menu = NSMenu(title: "Playback")
         menu.addItem(item("Play/Pause", #selector(PlayerWindowController.togglePlayPause(_:)), " ", []))
+        // The window controller reads J, K, and L as raw key events, so it can see a held key.
+        // These items show the keys and work from the menu.
+        menu.addItem(item("Play Backward", #selector(PlayerWindowController.playBackward(_:)), "j", []))
+        menu.addItem(item("Stop", #selector(PlayerWindowController.stopPlayback(_:)), "k", []))
+        menu.addItem(item("Play Forward", #selector(PlayerWindowController.playForward(_:)), "l", []))
         menu.addItem(.separator())
         menu.addItem(item("Back 5 Seconds", #selector(PlayerWindowController.skipBackward(_:)), left, []))
         menu.addItem(item("Forward 5 Seconds", #selector(PlayerWindowController.skipForward(_:)), right, []))
@@ -51,6 +57,14 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Previous Frame", #selector(PlayerWindowController.previousFrame(_:)), ",", []))
         menu.addItem(item("Next Frame", #selector(PlayerWindowController.nextFrame(_:)), ".", []))
+        menu.addItem(item("Previous Change", #selector(PlayerWindowController.previousChange(_:)), ",", [.option]))
+        menu.addItem(item("Next Change", #selector(PlayerWindowController.nextChange(_:)), ".", [.option]))
+        menu.addItem(.separator())
+        menu.addItem(item("Set In", #selector(PlayerWindowController.markIn(_:)), "i", []))
+        menu.addItem(item("Set Out", #selector(PlayerWindowController.markOut(_:)), "o", []))
+        menu.addItem(item("Go to In", #selector(PlayerWindowController.goToIn(_:)), "i", [.shift]))
+        menu.addItem(item("Go to Out", #selector(PlayerWindowController.goToOut(_:)), "o", [.shift]))
+        menu.addItem(item("Clear In and Out", #selector(PlayerWindowController.clearMarks(_:)), "x", [.option]))
         return menu
     }
 

@@ -6,8 +6,10 @@ import AVFoundation
 /// This reads the sample table only (no decoding). It works for files that
 /// AVFoundation can open (MP4, MOV). For other files, `load` returns nil.
 struct FrameIndex {
-    /// Sorted frame start times in seconds.
+    /// Sorted frame start times in seconds, in mpv playback time.
     let times: [Double]
+    /// Add this to a time in `times` to get the AVFoundation asset time of the same frame.
+    let assetOffset: Double
 
     var count: Int { times.count }
 
@@ -52,10 +54,11 @@ struct FrameIndex {
 
         // When the edit starts inside a frame, FFmpeg (and so mpv) moves the first
         // visible frame to the edit start. AVFoundation keeps the partial offset. Match FFmpeg.
+        var shift = 0.0
         if let start = mappings.first?.target.start.seconds {
-            let shift = start - times[0]
+            shift = start - times[0]
             times = times.map { $0 + shift }
         }
-        return FrameIndex(times: times)
+        return FrameIndex(times: times, assetOffset: -shift)
     }
 }

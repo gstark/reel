@@ -13,6 +13,56 @@ A minimal macOS video player. It uses libmpv for playback, the same engine as II
 - When playback is paused, the control bar shows the frame number and the time in milliseconds. For MP4 and MOV files, the frame number is exact, also for variable frame rate screen recordings. For other files, mpv estimates it ("≈").
 - mpv gets the display ICC profile, as in IINA. The profile updates when the window moves to another screen.
 
+## Frame scrubbing
+
+Reel borrows these tools from video editors for frame-accurate work on a paused video.
+
+### Frame strip
+
+When playback pauses, the window grows down and shows a row of frames under the control bar. The video keeps its size. When playback starts again, the window shrinks back.
+
+- The middle frame, with the accent border, is the current frame.
+- Move the pointer over a frame to see it in the video. Move the pointer off the strip to go back.
+- Click a frame to go to it.
+- Drag the strip like a ruler. Each frame width of the drag steps one frame.
+- Scroll with the trackpad or the mouse wheel to step frames. One wheel notch is one frame.
+- An orange tick marks a frame that differs from the frame before it. Screen recordings often have long runs of identical frames, and the ticks show where the picture changes.
+- A yellow band marks the frames between the In mark and the Out mark.
+
+For MP4 and MOV files, the strip shows frame numbers. For other files, it shows times.
+
+### Precision scrubbing
+
+Drag the playhead in the control bar, then move the pointer up or down, away from the bar. The scrub speed drops as the pointer moves farther away:
+
+| Distance from the bar | Speed |
+| --- | --- |
+| Less than 40 points | Normal |
+| 40 to 90 points | Half |
+| 90 to 140 points | Quarter |
+| More than 140 points | Fine (a fraction of a frame per point) |
+
+The control bar shows the current speed during the drag.
+
+### J, K, and L
+
+- L plays forward. Each press doubles the speed, up to 16×.
+- J plays backward. Each press doubles the speed, up to 16×.
+- K stops.
+- Hold K and tap J or L to step one frame.
+- Hold K and hold J or L to play at quarter speed. Release a key to stop.
+
+### Changes
+
+⌥. goes to the next frame that differs from the frame before it. ⌥, goes to the previous such frame. Use these to skip runs of identical frames.
+
+### In and Out marks
+
+- I sets the In mark and O sets the Out mark.
+- Playback loops between the marks.
+- ⌥⌘C copies all frames from In to Out. Reel asks first when the range has more than 100 frames.
+- The control bar shows the marks on the playhead track.
+
 ## Keyboard shortcuts
 
 | Key | Action |
@@ -21,11 +71,18 @@ A minimal macOS video player. It uses libmpv for playback, the same engine as II
 | ← / → | Back or forward 5 seconds |
 | ⇧← / ⇧→ | Back or forward 30 seconds |
 | , / . | Previous or next frame (pauses playback) |
+| ⌥, / ⌥. | Previous or next change |
+| J / K / L | Play backward, stop, play forward |
+| K + J / K + L | Step one frame back or forward. Hold to play at quarter speed |
+| I / O | Set the In mark or the Out mark |
+| ⇧I / ⇧O | Go to the In mark or the Out mark |
+| ⌥X | Clear the In and Out marks |
 | ⌘C | Copy the current frame |
 | ⇧⌘C | Copy the current frame and 5 frames on each side |
+| ⌥⌘C | Copy the frames from In to Out |
 | ⌃⌘F | Full screen |
 
-The control bar has buttons for each of these actions.
+The control bar has buttons for play, the 5 and 30 second skips, the frame steps, and ⇧⌘C. The Playback menu lists all the commands.
 
 ## Copying frames
 
