@@ -334,15 +334,17 @@ final class FrameNavigator {
 
     // MARK: - In and out marks
 
-    func markIn() {
-        let time = currentTime
+    /// Set the in mark at a frame. Without a time, it uses the current frame.
+    func markIn(at time: Double? = nil) {
+        let time = time ?? currentTime
         inPoint = time
         if let outPoint, outPoint < time { self.outPoint = nil }
         marksChanged()
     }
 
-    func markOut() {
-        let time = currentTime
+    /// Set the out mark at a frame. Without a time, it uses the current frame.
+    func markOut(at time: Double? = nil) {
+        let time = time ?? currentTime
         outPoint = time
         if let inPoint, inPoint > time { self.inPoint = nil }
         marksChanged()
@@ -359,6 +361,12 @@ final class FrameNavigator {
         guard let inPoint, let outPoint else { return nil }
         if let index { return index.frame(at: outPoint) - index.frame(at: inPoint) + 1 }
         return Int(((outPoint - inPoint) / frameDuration).rounded()) + 1
+    }
+
+    /// The time from the start of the in frame to the end of the out frame.
+    var markedRange: ClosedRange<Double>? {
+        guard let inPoint, let outPoint else { return nil }
+        return inPoint...max(endOfFrame(at: outPoint), inPoint)
     }
 
     private func marksChanged() {

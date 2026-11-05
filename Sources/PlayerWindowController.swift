@@ -22,6 +22,8 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     private var hasVideo = false
     private var frameIndex: FrameIndex?
     private var isCopying = false
+    /// Stops the export that runs. nil when no export runs.
+    private var cancelExport: (() -> Void)?
     private var keyMonitor: Any?
 
     /// The window frame before the strip opened, and the frame after.
@@ -271,6 +273,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     }
 
     func windowWillClose(_ notification: Notification) {
+        cancelExport?()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         videoView.videoLayer.destroy()
         player.destroy()
@@ -293,11 +296,74 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     @objc func stopPlayback(_ sender: Any?) { shuttle.stop() }
     @objc func playForward(_ sender: Any?) { shuttle.playForward() }
 
-    @objc func markIn(_ sender: Any?) { navigator.markIn() }
-    @objc func markOut(_ sender: Any?) { navigator.markOut() }
+    /// A context menu item carries the frame time. The menu bar item uses the current frame.
+    @objc func markIn(_ sender: Any?) { navigator.markIn(at: (sender as? NSMenuItem)?.representedObject as? Double) }
+    @objc func markOut(_ sender: Any?) { navigator.markOut(at: (sender as? NSMenuItem)?.representedObject as? Double) }
     @objc func clearMarks(_ sender: Any?) { navigator.clearMarks() }
     @objc func goToIn(_ sender: Any?) { navigator.inPoint.map(navigator.select) }
     @objc func goToOut(_ sender: Any?) { navigator.outPoint.map(navigator.select) }
+
+    // MARK: - Export
+
+    /// Save the part from the in frame to the end of the out frame as a new file.
+    /// While an export runs, the same action cancels it.
+    @objc func exportMarkedRange(_ sender: Any?) {
+        if let cancelExport {
+            cancelExport()
+            return
+        }
+        guard let window, let index = frameIndex, let range = navigator.markedRange,
+              let inPoint = navigator.inPoint, let outPoint = navigator.outPoint else { return }
+        player.pause()
+
+        let first = index.frame(at: inPoint) + 1, last = index.frame(at: outPoint) + 1
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(url.deletingPathExtension().lastPathComponent) frames \(first)-\(last).\(url.pathExtension)"
+        panel.directoryURL = url.deletingLastPathComponent()
+        panel.message = "Export frames \(first) to \(last) as a new file."
+        panel.prompt = "Export"
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let destination = panel.url else { return }
+            // AVFoundation time differs from mpv time by the frame index offset.
+            let assetRange = range.lowerBound + index.assetOffset...range.upperBound + index.assetOffset
+            self?.export(assetRange, to: destination)
+        }
+    }
+
+    private func export(_ range: ClosedRange<Double>, to destination: URL) {
+        guard let exporter = ClipExporter(source: url, range: range, destination: destination) else {
+            showExportError("This file type cannot be exported.")
+            return
+        }
+        cancelExport = exporter.cancel
+        controlBar.setExportProgress(0)
+        showStatus("Exporting 0%…")
+        exporter.start { [weak self] progress in
+            self?.controlBar.setExportProgress(progress)
+            self?.showStatus("Exporting \(Int(progress * 100))%…")
+        } completion: { [weak self] error in
+            self?.finishExport(error, done: "Exported \(destination.lastPathComponent)")
+        }
+    }
+
+    private func finishExport(_ error: Error?, done: String) {
+        cancelExport = nil
+        controlBar.setExportProgress(nil)
+        switch error {
+        case nil: showStatus(done)
+        case is CancellationError: showStatus("Export canceled")
+        case let error?: showExportError(error.localizedDescription)
+        }
+    }
+
+    private func showExportError(_ message: String) {
+        guard let window else { return }
+        window.subtitle = ""
+        let alert = NSAlert()
+        alert.messageText = "Cannot export the clip"
+        alert.informativeText = message
+        alert.beginSheetModal(for: window)
+    }
 
     // MARK: - Copy frames
 
@@ -330,6 +396,9 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(exportMarkedRange(_:)):
+            menuItem.title = cancelExport == nil ? "Export In to Out…" : "Cancel Export"
+            return cancelExport != nil || (frameIndex != nil && navigator.markedRange != nil)
         case #selector(copy(_:)), #selector(copyFramesAroundPause(_:)):
             return !isCopying && hasVideo
         case #selector(copyMarkedFrames(_:)):

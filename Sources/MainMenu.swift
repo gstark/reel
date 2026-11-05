@@ -28,6 +28,8 @@ enum MainMenu {
         let menu = NSMenu(title: "File")
         menu.addItem(withTitle: "Open…", action: #selector(AppDelegate.openDocument(_:)), keyEquivalent: "o")
         menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Export In to Out…", action: #selector(PlayerWindowController.exportMarkedRange(_:)), keyEquivalent: "e")
         return menu
     }
 

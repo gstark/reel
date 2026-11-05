@@ -114,7 +114,8 @@ final class FrameStripView: NSView {
             if i == middle, slot.number != nil, let frameCount { text += " of \(frameCount)" }
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: labelFont,
-                .foregroundColor: i == middle ? NSColor.labelColor : NSColor.secondaryLabelColor,
+                .foregroundColor: isMark(slot.time) ? NSColor.systemYellow
+                    : i == middle ? NSColor.labelColor : NSColor.secondaryLabelColor,
             ]
             let size = text.size(withAttributes: attributes)
             let rect = NSRect(x: thumbRect(i).midX - size.width / 2, y: Self.bottomInset, width: size.width, height: size.height)
@@ -138,6 +139,10 @@ final class FrameStripView: NSView {
                 context.interpolationQuality = .high
                 context.draw(image, in: fit(image, in: rect))
             }
+            if isOutsideRange(slot.time) {
+                NSColor.black.withAlphaComponent(0.55).setFill()
+                rect.fill(using: .sourceOver)
+            }
 
             if slot.changed {
                 // A tick over the left edge: the picture changes between this frame and the one before.
@@ -156,6 +161,11 @@ final class FrameStripView: NSView {
                 NSBezierPath(rect: rect.insetBy(dx: -0.5, dy: -0.5)).stroke()
             }
 
+            // Drawn after the border, so the bracket shows on the current frame too.
+            NSColor.systemYellow.setFill()
+            if let start = marks.in, abs(slot.time - start) < 0.0005 { bracket(around: rect, opening: true).fill() }
+            if let end = marks.out, abs(slot.time - end) < 0.0005 { bracket(around: rect, opening: false).fill() }
+
             if let label = i == middle ? middleLabel : label(i),
                i == middle || !label.rect.insetBy(dx: -4, dy: 0).intersects(middleLabel?.rect ?? .zero) {
                 label.text.draw(at: label.rect.origin, withAttributes: label.attributes)
@@ -170,6 +180,28 @@ final class FrameStripView: NSView {
         case let (nil, end?): return abs(time - end) < 0.0005
         case (nil, nil): return false
         }
+    }
+
+    private func isMark(_ time: Double) -> Bool {
+        [marks.in, marks.out].contains { $0.map { abs(time - $0) < 0.0005 } ?? false }
+    }
+
+    /// Frames outside the marked range are dimmed, once both marks are set.
+    private func isOutsideRange(_ time: Double) -> Bool {
+        guard let start = marks.in, let end = marks.out else { return false }
+        return time < start - 0.0005 || time > end + 0.0005
+    }
+
+    /// A "[" bracket on the left edge of the in frame, or a "]" bracket on the right edge of the out frame.
+    private func bracket(around rect: NSRect, opening: Bool) -> NSBezierPath {
+        let stem: CGFloat = 3, foot: CGFloat = 12, overhang: CGFloat = 3
+        let stemX = opening ? rect.minX - stem : rect.maxX
+        let footX = opening ? stemX : rect.maxX + stem - foot
+        let bottom = rect.minY - overhang, height = rect.height + 2 * overhang
+        let path = NSBezierPath(rect: NSRect(x: stemX, y: bottom, width: stem, height: height))
+        path.append(NSBezierPath(rect: NSRect(x: footX, y: bottom, width: foot, height: stem)))
+        path.append(NSBezierPath(rect: NSRect(x: footX, y: bottom + height - stem, width: foot, height: stem)))
+        return path
     }
 
     private func fit(_ image: CGImage, in rect: NSRect) -> NSRect {
@@ -213,7 +245,7 @@ final class FrameStripView: NSView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let i = slot(at: convert(event.locationInWindow, from: nil)), let slot = slots[i] else { return nil }
-        return CopyTimeMenu.make(time: slot.time, frame: slot.number)
+        return FrameMenu.make(time: slot.time, frame: slot.number)
     }
 
     override func mouseDragged(with event: NSEvent) {

@@ -28,6 +28,11 @@ final class ControlBar: NSView {
         slider.marks = (start, end)
     }
 
+    /// 0...1 while an export runs. The marked range on the slider fills as the export runs.
+    func setExportProgress(_ progress: Double?) {
+        slider.exportProgress = progress
+    }
+
     init(player: MPVPlayer) {
         self.player = player
         playButton = ControlBar.button("pause.fill", "Play/Pause (Space)")
@@ -53,7 +58,7 @@ final class ControlBar: NSView {
         }
         slider.contextMenu = { [weak self] in
             guard let self else { return nil }
-            return CopyTimeMenu.make(time: player.position, frame: frameNumber(at: player.position))
+            return FrameMenu.make(time: player.position, frame: frameNumber(at: player.position))
         }
 
         timeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -220,6 +225,14 @@ final class ScrubSlider: NSSlider {
         }
     }
 
+    var exportProgress: Double? {
+        get { (cell as? ScrubSliderCell)?.exportProgress }
+        set {
+            (cell as? ScrubSliderCell)?.exportProgress = newValue
+            needsDisplay = true
+        }
+    }
+
     override class var cellClass: AnyClass? {
         get { ScrubSliderCell.self }
         set {}
@@ -274,20 +287,49 @@ final class ScrubSlider: NSSlider {
 }
 
 /// Draws the in and out marks on the slider bar, under the knob.
+///
+/// A band joins the marks. The in mark is a "[" bracket and the out mark is a "]" bracket,
+/// taller than the bar. While an export runs, the band dims and fills from in to out.
 final class ScrubSliderCell: NSSliderCell {
     var marks: (in: Double?, out: Double?) = (nil, nil)
+    var exportProgress: Double?
 
     override func drawBar(inside rect: NSRect, flipped: Bool) {
         super.drawBar(inside: rect, flipped: flipped)
         guard maxValue > minValue, marks.in != nil || marks.out != nil else { return }
         let travel = rect.width - knobThickness
         func x(_ value: Double) -> CGFloat {
-            rect.minX + knobThickness / 2 + CGFloat((value - minValue) / (maxValue - minValue)) * travel
+            (rect.minX + knobThickness / 2 + CGFloat((value - minValue) / (maxValue - minValue)) * travel).rounded()
         }
         let start = marks.in.map(x), end = marks.out.map(x)
         let left = start ?? end!, right = end ?? start!
-        NSColor.systemYellow.withAlphaComponent(0.85).setFill()
-        NSBezierPath(roundedRect: NSRect(x: left - 1, y: rect.midY - 2, width: max(right - left, 0) + 2, height: 4),
-                     xRadius: 2, yRadius: 2).fill()
+        let band = NSRect(x: left, y: rect.midY - 2, width: max(right - left, 0), height: 4)
+        let color = NSColor.systemYellow
+
+        if let exportProgress {
+            color.withAlphaComponent(0.3).setFill()
+            band.fill()
+            color.setFill()
+            NSRect(x: band.minX, y: band.minY, width: band.width * CGFloat(min(max(exportProgress, 0), 1)), height: band.height).fill()
+        } else {
+            color.withAlphaComponent(0.85).setFill()
+            band.fill()
+        }
+
+        color.setFill()
+        if let start { bracket(at: start, opening: true, in: rect).fill() }
+        if let end { bracket(at: end, opening: false, in: rect).fill() }
+    }
+
+    /// A "[" (opening) or "]" bracket. Its stem is on the mark, and its feet point into the range.
+    private func bracket(at x: CGFloat, opening: Bool, in rect: NSRect) -> NSBezierPath {
+        let height: CGFloat = 14, stem: CGFloat = 2, foot: CGFloat = 5, thickness: CGFloat = 2
+        let top = rect.midY + height / 2, bottom = rect.midY - height / 2
+        let stemX = x - stem / 2
+        let footX = opening ? stemX : stemX + stem - foot
+        let path = NSBezierPath(rect: NSRect(x: stemX, y: bottom, width: stem, height: height))
+        path.append(NSBezierPath(rect: NSRect(x: footX, y: top - thickness, width: foot, height: thickness)))
+        path.append(NSBezierPath(rect: NSRect(x: footX, y: bottom, width: foot, height: thickness)))
+        return path
     }
 }
