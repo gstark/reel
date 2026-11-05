@@ -346,6 +346,86 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         }
     }
 
+    /// Save each frame from the in frame to the out frame as a PNG file in a folder.
+    /// The file name is a prefix and the frame number. The number has as many digits as
+    /// the frame count of the video, with leading zeros, so all names have the same length.
+    @objc func exportMarkedFrames(_ sender: Any?) {
+        guard cancelExport == nil, let window, let index = frameIndex,
+              let inPoint = navigator.inPoint, let outPoint = navigator.outPoint,
+              let count = navigator.markedFrameCount else { return }
+        player.pause()
+
+        let first = index.frame(at: inPoint) + 1, last = index.frame(at: outPoint) + 1
+        let digits = String(index.count).count
+        let accessory = FramePrefixView(prefix: "\(url.deletingPathExtension().lastPathComponent)-",
+                                        exampleFrame: first, digits: digits)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.directoryURL = url.deletingLastPathComponent()
+        panel.message = "Choose a folder for \(count) PNG files, frames \(first) to \(last)."
+        panel.prompt = "Export"
+        panel.accessoryView = accessory
+        panel.isAccessoryViewDisclosed = true
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let folder = panel.url, let self else { return }
+            let prefix = accessory.prefix
+            let fileName = { (time: Double) in
+                prefix + FramePrefixView.number(index.frame(at: time) + 1, digits: digits) + ".png"
+            }
+            let existing = (first...last).filter { frame in
+                FileManager.default.fileExists(atPath: folder.appendingPathComponent(fileName(index.times[frame - 1])).path)
+            }.count
+            guard existing > 0 else {
+                exportFrames(from: inPoint, through: outPoint, count: count, into: folder, fileName: fileName)
+                return
+            }
+            // The open panel is still closing. Show the question after it.
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = existing == 1 ? "Replace 1 file?" : "Replace \(existing) files?"
+                alert.informativeText = "\(folder.lastPathComponent) already has PNG files with these names."
+                alert.addButton(withTitle: "Replace")
+                alert.addButton(withTitle: "Cancel")
+                alert.beginSheetModal(for: window) { [weak self] response in
+                    guard response == .alertFirstButtonReturn else { return }
+                    self?.exportFrames(from: inPoint, through: outPoint, count: count, into: folder, fileName: fileName)
+                }
+            }
+        }
+    }
+
+    private func exportFrames(from start: Double, through end: Double, count: Int, into folder: URL,
+                              fileName: @escaping (Double) -> String) {
+        let stop = StopFlag()
+        cancelExport = stop.set
+        controlBar.setExportProgress(0)
+        showStatus("Exporting frame 0 of \(count)…")
+        let source = url
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result {
+                try FrameGrabber.grab(source, at: start, before: 0, after: .max, through: end, into: folder,
+                                      fileName: fileName) { saved in
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, !stop.isSet else { return }
+                        controlBar.setExportProgress(Double(saved) / Double(count))
+                        showStatus("Exporting frame \(saved) of \(count)…")
+                    }
+                    return !stop.isSet
+                }
+            }
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let frames):
+                    self?.finishExport(nil, done: frames.count == 1 ? "Exported 1 frame" : "Exported \(frames.count) frames")
+                case .failure(let error):
+                    self?.finishExport(error, done: "")
+                }
+            }
+        }
+    }
+
     private func finishExport(_ error: Error?, done: String) {
         cancelExport = nil
         controlBar.setExportProgress(nil)
@@ -360,7 +440,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         guard let window else { return }
         window.subtitle = ""
         let alert = NSAlert()
-        alert.messageText = "Cannot export the clip"
+        alert.messageText = "Cannot export"
         alert.informativeText = message
         alert.beginSheetModal(for: window)
     }
@@ -399,6 +479,8 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         case #selector(exportMarkedRange(_:)):
             menuItem.title = cancelExport == nil ? "Export In to Out…" : "Cancel Export"
             return cancelExport != nil || (frameIndex != nil && navigator.markedRange != nil)
+        case #selector(exportMarkedFrames(_:)):
+            return cancelExport == nil && !isCopying && frameIndex != nil && navigator.markedRange != nil
         case #selector(copy(_:)), #selector(copyFramesAroundPause(_:)):
             return !isCopying && hasVideo
         case #selector(copyMarkedFrames(_:)):

@@ -30,6 +30,7 @@ enum MainMenu {
         menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Export In to Out…", action: #selector(PlayerWindowController.exportMarkedRange(_:)), keyEquivalent: "e")
+        menu.addItem(item("Export In to Out as PNG Frames…", #selector(PlayerWindowController.exportMarkedFrames(_:)), "e", [.command, .shift]))
         return menu
     }
 

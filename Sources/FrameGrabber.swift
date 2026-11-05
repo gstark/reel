@@ -22,8 +22,10 @@ enum FrameGrabber {
     ///   - after: The number of frames after the frame at `time`.
     ///   - end: Stop at the frame that starts at this time, also when `after` is larger.
     ///   - fileName: Gets the frame time and returns a file name for it.
+    ///   - onFrame: Gets the number of frames saved so far. It returns false to stop.
     static func grab(_ source: URL, at time: Double, before: Int, after: Int, through end: Double = .infinity,
-                     into folder: URL, fileName: (Double) -> String) throws -> [Frame] {
+                     into folder: URL, fileName: (Double) -> String,
+                     onFrame: (Int) -> Bool = { _ in true }) throws -> [Frame] {
         let session = try MPVSession(source: source, start: time)
         defer { session.close() }
         // The frame mpv shows for `time`. Count "after" frames from this one.
@@ -45,6 +47,7 @@ enum FrameGrabber {
                 throw Failure(errorDescription: "mpv could not save the frame at \(position) seconds.")
             }
             frames.append(Frame(url: url, time: position))
+            guard onFrame(frames.count) else { throw CancellationError() }
 
             // Stop after `after` frames past the paused frame.
             let pastPause = frames.filter { $0.time > anchor }.count

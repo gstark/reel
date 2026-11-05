@@ -186,8 +186,8 @@ private struct VideoTrack: @unchecked Sendable {
     }
 }
 
-/// Tells the decoding thread that the reader stopped listening.
-private final class StopFlag: @unchecked Sendable {
+/// A stop request that a background thread can read: the reader stopped listening, or the user canceled.
+final class StopFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var value = false
 

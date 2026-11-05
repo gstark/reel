@@ -23,6 +23,7 @@ enum FrameMenu {
         menu.addItem(.separator())
         // The window controller sets the title: "Export In to Out…" or "Cancel Export".
         menu.addItem(withTitle: "Export In to Out…", action: #selector(PlayerWindowController.exportMarkedRange(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Export In to Out as PNG Frames…", action: #selector(PlayerWindowController.exportMarkedFrames(_:)), keyEquivalent: "")
         return menu
     }
 
