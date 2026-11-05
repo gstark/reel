@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 
 /// One window per file: video on top, control bar below, standard title bar above.
 /// While playback is paused, the frame strip opens under the control bar.
@@ -336,13 +337,30 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             return
         }
         cancelExport = exporter.cancel
+        let count = navigator.markedFrameCount ?? 0
         controlBar.setExportProgress(0)
         showStatus("Exporting 0%…")
         exporter.start { [weak self] progress in
             self?.controlBar.setExportProgress(progress)
             self?.showStatus("Exporting \(Int(progress * 100))%…")
         } completion: { [weak self] error in
-            self?.finishExport(error, done: "Exported \(destination.lastPathComponent)")
+            guard let self else { return }
+            finishExport(error)
+            guard error == nil else { return }
+            let seconds = range.upperBound - range.lowerBound
+            let toast = ExportToast(title: "Exported \(destination.lastPathComponent)",
+                                    detail: "\(count) frames, \(String(format: "%.2f", seconds)) s, in \(destination.deletingLastPathComponent().lastPathComponent)",
+                                    isStack: false, reveal: [destination])
+            showToast(toast)
+            // Read the first frame back from the new file, so the toast shows what the clip starts on.
+            Task { @MainActor [weak toast] in
+                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 320, height: 320)
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = .zero
+                toast?.image = try? await generator.image(at: .zero).image
+            }
         }
     }
 
@@ -418,22 +436,49 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             DispatchQueue.main.async {
                 switch result {
                 case .success(let frames):
-                    self?.finishExport(nil, done: frames.count == 1 ? "Exported 1 frame" : "Exported \(frames.count) frames")
+                    self?.finishExport(nil)
+                    self?.showToast(ExportToast(
+                        title: frames.count == 1 ? "Exported 1 frame" : "Exported \(frames.count) frames",
+                        detail: "\(frames.first?.url.lastPathComponent ?? "") and on, in \(folder.lastPathComponent)",
+                        isStack: frames.count > 1, reveal: frames.first.map { [$0.url] } ?? [folder]),
+                        image: frames.first.flatMap { Self.thumbnail(of: $0.url) })
                 case .failure(let error):
-                    self?.finishExport(error, done: "")
+                    self?.finishExport(error)
                 }
             }
         }
     }
 
-    private func finishExport(_ error: Error?, done: String) {
+    /// A success clears the status text. The toast announces it.
+    private func finishExport(_ error: Error?) {
         cancelExport = nil
         controlBar.setExportProgress(nil)
         switch error {
-        case nil: showStatus(done)
+        case nil: window?.subtitle = ""
         case is CancellationError: showStatus("Export canceled")
         case let error?: showExportError(error.localizedDescription)
         }
+    }
+
+    /// A new toast replaces the one on screen.
+    private func showToast(_ toast: ExportToast, image: CGImage? = nil) {
+        content.toast?.close()
+        toast.image = image
+        toast.onDismiss = { [weak self, weak toast] in
+            if let self, content.toast === toast { content.toast = nil }
+        }
+        content.toast = toast
+        content.layoutSubtreeIfNeeded()
+        toast.present()
+    }
+
+    /// A small image of a PNG file, for the toast.
+    private static func thumbnail(of url: URL) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 320,
+        ] as CFDictionary)
     }
 
     private func showExportError(_ message: String) {
@@ -560,6 +605,16 @@ private final class PlayerContentView: NSView {
         }
     }
 
+    /// The export announcement, centered over the bottom of the video.
+    var toast: ExportToast? {
+        didSet {
+            if let toast, toast !== oldValue {
+                addSubview(toast)
+                needsLayout = true
+            }
+        }
+    }
+
     init(video: NSView, controlBar: NSView, strip: NSView) {
         self.video = video
         self.controlBar = controlBar
@@ -578,5 +633,11 @@ private final class PlayerContentView: NSView {
         strip.frame = NSRect(x: 0, y: 0, width: bounds.width, height: stripHeight)
         controlBar.frame = NSRect(x: 0, y: stripHeight, width: bounds.width, height: ControlBar.height)
         video.frame = NSRect(x: 0, y: chrome, width: bounds.width, height: max(bounds.height - chrome, 0))
+        if let toast {
+            let size = toast.fittingSize
+            let width = min(size.width, bounds.width - 2 * ExportToast.gap)
+            toast.frame = NSRect(x: ((bounds.width - width) / 2).rounded(), y: chrome + ExportToast.gap,
+                                 width: width, height: size.height)
+        }
     }
 }
