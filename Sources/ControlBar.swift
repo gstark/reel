@@ -51,6 +51,10 @@ final class ControlBar: NSView {
             player.seek(to: slider.doubleValue, exact: true)
             update()
         }
+        slider.contextMenu = { [weak self] in
+            guard let self else { return nil }
+            return CopyTimeMenu.make(time: player.position, frame: frameNumber(at: player.position))
+        }
 
         timeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         timeLabel.textColor = .secondaryLabelColor
@@ -128,6 +132,12 @@ final class ControlBar: NSView {
         return (player.isForward ? "" : "◀ ") + speed
     }
 
+    /// The one-based frame number. Without a frame index, it is mpv's estimate for the current position.
+    private func frameNumber(at position: Double) -> Int? {
+        if let frameIndex { return frameIndex.frame(at: position) + 1 }
+        return player.int("estimated-frame-number").map { $0 + 1 }
+    }
+
     // MARK: - Actions
 
     @objc private func togglePause() { player.togglePause() }
@@ -197,6 +207,8 @@ final class ScrubSlider: NSSlider {
     private(set) var isScrubbing = false
     private(set) var level = Level.normal
     var onRelease: (() -> Void)?
+    /// The right-click menu.
+    var contextMenu: (() -> NSMenu?)?
     /// The seconds that one point of drag moves at the fine level.
     var fineSecondsPerPoint = 1.0 / 180
 
@@ -211,6 +223,10 @@ final class ScrubSlider: NSSlider {
     override class var cellClass: AnyClass? {
         get { ScrubSliderCell.self }
         set {}
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        contextMenu?() ?? super.menu(for: event)
     }
 
     override func mouseDown(with event: NSEvent) {

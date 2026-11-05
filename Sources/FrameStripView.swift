@@ -6,6 +6,7 @@ import AppKit
 /// - A move over a slot skims: the video shows that frame until the pointer leaves the strip.
 /// - A click goes to the frame. A drag then moves the strip like a ruler, one slot per frame.
 /// - A scroll (trackpad or wheel) steps frames.
+/// - A right-click opens a menu that copies the time code and frame number of that frame.
 final class FrameStripView: NSView {
     static let height: CGFloat = 92
 
@@ -208,6 +209,11 @@ final class FrameStripView: NSView {
         if let i = slot(at: point), let slot = slots[i] {
             onSelect?(slot.time)
         }
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let i = slot(at: convert(event.locationInWindow, from: nil)), let slot = slots[i] else { return nil }
+        return CopyTimeMenu.make(time: slot.time, frame: slot.number)
     }
 
     override func mouseDragged(with event: NSEvent) {
