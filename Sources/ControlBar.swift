@@ -8,11 +8,18 @@ final class ControlBar: NSView {
     private let playButton: NSButton
     private let slider = ScrubSlider()
     private let timeLabel = NSTextField(labelWithString: "0:00 / 0:00")
+    /// The label width fits the longest time text for the file, so the slider keeps its width.
+    private lazy var timeLabelWidth = timeLabel.widthAnchor.constraint(equalToConstant: 0)
+    private var timeLabelWidthDuration: Double?
 
     /// Exact frame times. Without it, the frame number comes from mpv's estimate.
     var frameIndex: FrameIndex? {
         didSet { update() }
     }
+
+    /// Shows the playback speed or the scrub level under the window title, or removes it (nil).
+    var onStatus: ((String?) -> Void)?
+    private var status: String?
 
     /// The duration of one frame. The finest scrub level moves one frame for a few points of drag.
     var frameDuration: () -> Double = { 1.0 / 30 }
@@ -47,6 +54,7 @@ final class ControlBar: NSView {
 
         timeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         timeLabel.textColor = .secondaryLabelColor
+        timeLabel.alignment = .right
         timeLabel.setContentHuggingPriority(.required, for: .horizontal)
         timeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
@@ -73,6 +81,7 @@ final class ControlBar: NSView {
             row.leadingAnchor.constraint(equalTo: leadingAnchor),
             row.trailingAnchor.constraint(equalTo: trailingAnchor),
             row.centerYAnchor.constraint(equalTo: centerYAnchor),
+            timeLabelWidth,
         ])
     }
 
@@ -86,36 +95,37 @@ final class ControlBar: NSView {
         }
         slider.fineSecondsPerPoint = frameDuration() / 6
         let position = slider.isScrubbing ? slider.doubleValue : player.position
-        let duration = ControlBar.format(player.duration)
-        if slider.isScrubbing, let level = slider.level.name {
-            timeLabel.stringValue = "\(level)   \(ControlBar.format(position, milliseconds: true)) / \(duration)"
-        } else if player.isPaused && !slider.isScrubbing {
-            let time = "\(ControlBar.format(position, milliseconds: true)) / \(duration)"
-            timeLabel.stringValue = frameText(at: position).map { "\($0)   \(time)" } ?? time
-        } else {
-            timeLabel.stringValue = speedText() + "\(ControlBar.format(position)) / \(duration)"
+        let milliseconds = player.isPaused || slider.isScrubbing
+        timeLabel.stringValue = "\(ControlBar.format(position, milliseconds: milliseconds)) / \(ControlBar.format(player.duration))"
+        fitTimeLabelWidth()
+
+        let status = slider.isScrubbing ? slider.level.name : player.isPaused ? nil : speedText()
+        if status != self.status {
+            self.status = status
+            onStatus?(status)
         }
     }
 
+    /// Sizes the label for the longest text: the position with milliseconds at the full duration.
+    /// The digits are monospaced, so every position of the file fits the same width.
+    private func fitTimeLabelWidth() {
+        guard player.duration != timeLabelWidthDuration, let font = timeLabel.font else { return }
+        timeLabelWidthDuration = player.duration
+        let longest = "\(ControlBar.format(player.duration, milliseconds: true)) / \(ControlBar.format(player.duration))"
+        let size = (longest as NSString).size(withAttributes: [.font: font])
+        // The text field draws its text a few points in from each edge.
+        timeLabelWidth.constant = ceil(size.width) + 6
+    }
+
     /// "◀ 2×" while playing backward or at another speed than normal.
-    private func speedText() -> String {
-        guard player.speed != 1 || !player.isForward else { return "" }
+    private func speedText() -> String? {
+        guard player.speed != 1 || !player.isForward else { return nil }
         let speed = switch player.speed {
         case 0.25: "¼×"
         case 0.5: "½×"
         default: String(format: "%g×", player.speed)
         }
-        return (player.isForward ? "" : "◀ ") + speed + "   "
-    }
-
-    /// "Frame 573 of 1338", one-based. "≈" marks an estimate from mpv.
-    private func frameText(at position: Double) -> String? {
-        if let frameIndex {
-            return "Frame \(frameIndex.frame(at: position) + 1) of \(frameIndex.count)"
-        }
-        guard let frame = player.int("estimated-frame-number") else { return nil }
-        let total = player.int("estimated-frame-count").map { " of \($0)" } ?? ""
-        return "≈ Frame \(frame + 1)\(total)"
+        return (player.isForward ? "" : "◀ ") + speed
     }
 
     // MARK: - Actions

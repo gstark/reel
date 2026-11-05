@@ -21,6 +21,8 @@ final class FrameStripView: NSView {
     /// One entry per visible slot. nil is a slot before the start or after the end of the file.
     var slots: [Slot?] = [] { didSet { needsDisplay = true } }
     var marks: (in: Double?, out: Double?) = (nil, nil) { didSet { needsDisplay = true } }
+    /// The number of frames in the file. The middle label shows it: "573 of 1338".
+    var frameCount: Int? { didSet { needsDisplay = true } }
     var aspectRatio: CGFloat = 16 / 9 {
         didSet { if aspectRatio != oldValue { layoutChanged() } }
     }
@@ -105,6 +107,20 @@ final class FrameStripView: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         let middle = slotCount / 2
         let labelFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        func label(_ i: Int) -> (text: String, attributes: [NSAttributedString.Key: Any], rect: NSRect)? {
+            guard i < slots.count, let slot = slots[i] else { return nil }
+            var text = slot.number.map(String.init) ?? String(format: "%.3f", slot.time)
+            if i == middle, slot.number != nil, let frameCount { text += " of \(frameCount)" }
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: labelFont,
+                .foregroundColor: i == middle ? NSColor.labelColor : NSColor.secondaryLabelColor,
+            ]
+            let size = text.size(withAttributes: attributes)
+            let rect = NSRect(x: thumbRect(i).midX - size.width / 2, y: Self.bottomInset, width: size.width, height: size.height)
+            return (text, attributes, rect)
+        }
+        // The middle label can be wider than its slot. Labels that it covers are not drawn.
+        let middleLabel = label(middle)
 
         for (i, slot) in slots.enumerated() {
             guard let slot else { continue }
@@ -139,13 +155,10 @@ final class FrameStripView: NSView {
                 NSBezierPath(rect: rect.insetBy(dx: -0.5, dy: -0.5)).stroke()
             }
 
-            let label = slot.number.map(String.init) ?? String(format: "%.3f", slot.time)
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: labelFont,
-                .foregroundColor: i == middle ? NSColor.labelColor : NSColor.secondaryLabelColor,
-            ]
-            let size = label.size(withAttributes: attributes)
-            label.draw(at: NSPoint(x: rect.midX - size.width / 2, y: Self.bottomInset), withAttributes: attributes)
+            if let label = i == middle ? middleLabel : label(i),
+               i == middle || !label.rect.insetBy(dx: -4, dy: 0).intersects(middleLabel?.rect ?? .zero) {
+                label.text.draw(at: label.rect.origin, withAttributes: label.attributes)
+            }
         }
     }
 

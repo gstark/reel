@@ -11,6 +11,7 @@ final class FrameNavigator {
     var index: FrameIndex? {
         didSet {
             reader = FrameReader(url: url, index: index)
+            strip.frameCount = index?.count
             cache = [:]
             decoded = []
             marksChanged()

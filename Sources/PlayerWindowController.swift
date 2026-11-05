@@ -60,6 +60,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
         controlBar.frameDuration = { [weak navigator] in navigator?.frameDuration ?? 1.0 / 30 }
         navigator.onStatus = { [weak self] in self?.showStatus($0) }
+        controlBar.onStatus = { [weak self] in self?.showControlStatus($0) }
         navigator.onMarksChange = { [weak self] in
             guard let self else { return }
             controlBar.setMarks(in: navigator.inPoint, out: navigator.outPoint)
@@ -220,6 +221,20 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak window] in
             if window?.subtitle == text { window?.subtitle = "" }
         }
+    }
+
+    private var controlStatus: String?
+
+    /// Show the playback speed or the scrub level under the window title while it applies.
+    /// nil removes it, unless other status text replaced it.
+    private func showControlStatus(_ text: String?) {
+        guard let window else { return }
+        if let text {
+            window.subtitle = text
+        } else if window.subtitle == controlStatus {
+            window.subtitle = ""
+        }
+        controlStatus = text
     }
 
     // MARK: - Errors
