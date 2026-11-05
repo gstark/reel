@@ -13,13 +13,14 @@ final class ExportToast: NSView {
     /// Removes the toast from its superview. The owner clears its reference here.
     var onDismiss: (() -> Void)?
 
-    private let reveal: [URL]
+    private let action: () -> Void
     private let thumbnail = ThumbnailView()
     private var dismissWork: DispatchWorkItem?
     private var isDismissing = false
 
-    init(title: String, detail: String, isStack: Bool, reveal: [URL]) {
-        self.reveal = reveal
+    /// `actionTitle` names the button, such as "Show in Finder". The button runs `action` and closes the toast.
+    init(title: String, detail: String, isStack: Bool, actionTitle: String, action: @escaping () -> Void) {
+        self.action = action
         super.init(frame: .zero)
         appearance = NSAppearance(named: .darkAqua)
         wantsLayer = true
@@ -52,7 +53,7 @@ final class ExportToast: NSView {
         text.alignment = .leading
         text.spacing = 2
 
-        let showButton = NSButton(title: "Show in Finder", target: self, action: #selector(showInFinder))
+        let showButton = NSButton(title: actionTitle, target: self, action: #selector(runAction))
         showButton.bezelStyle = .push
         showButton.controlSize = .small
         showButton.setContentHuggingPriority(.required, for: .horizontal)
@@ -149,8 +150,8 @@ final class ExportToast: NSView {
         }
     }
 
-    @objc private func showInFinder() {
-        NSWorkspace.shared.activateFileViewerSelecting(reveal)
+    @objc private func runAction() {
+        action()
         close()
     }
 

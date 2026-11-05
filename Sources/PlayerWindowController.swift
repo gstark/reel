@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 
 /// One window per file: video on top, control bar below, standard title bar above.
 /// While playback is paused, the frame strip opens under the control bar.
@@ -23,8 +22,12 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     private var hasVideo = false
     private var frameIndex: FrameIndex?
     private var isCopying = false
-    /// Stops the export that runs. nil when no export runs.
-    private var cancelExport: (() -> Void)?
+    private lazy var exports = ExportCoordinator(
+        url: url, player: player, navigator: navigator, controlBar: controlBar,
+        window: { [weak self] in self?.window },
+        frameIndex: { [weak self] in self?.frameIndex },
+        showStatus: { [weak self] in self?.showStatus($0) },
+        showToast: { [weak self] in self?.showToast($0, image: $1) })
     private var keyMonitor: Any?
 
     /// The window frame before the strip opened, and the frame after.
@@ -274,7 +277,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     }
 
     func windowWillClose(_ notification: Notification) {
-        cancelExport?()
+        exports.cancel()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         videoView.videoLayer.destroy()
         player.destroy()
@@ -306,162 +309,15 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     // MARK: - Export
 
-    /// Save the part from the in frame to the end of the out frame as a new file.
-    /// While an export runs, the same action cancels it.
+    /// While an export runs, the same item cancels it.
     @objc func exportMarkedRange(_ sender: Any?) {
-        if let cancelExport {
-            cancelExport()
-            return
-        }
-        guard let window, let index = frameIndex, let range = navigator.markedRange,
-              let inPoint = navigator.inPoint, let outPoint = navigator.outPoint else { return }
-        player.pause()
-
-        let first = index.frame(at: inPoint) + 1, last = index.frame(at: outPoint) + 1
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(url.deletingPathExtension().lastPathComponent) frames \(first)-\(last).\(url.pathExtension)"
-        panel.directoryURL = url.deletingLastPathComponent()
-        panel.message = "Export frames \(first) to \(last) as a new file."
-        panel.prompt = "Export"
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let destination = panel.url else { return }
-            // AVFoundation time differs from mpv time by the frame index offset.
-            let assetRange = range.lowerBound + index.assetOffset...range.upperBound + index.assetOffset
-            self?.export(assetRange, to: destination)
-        }
+        exports.isRunning ? exports.cancel() : exports.exportClip()
     }
 
-    private func export(_ range: ClosedRange<Double>, to destination: URL) {
-        guard let exporter = ClipExporter(source: url, range: range, destination: destination) else {
-            showExportError("This file type cannot be exported.")
-            return
-        }
-        cancelExport = exporter.cancel
-        let count = navigator.markedFrameCount ?? 0
-        controlBar.setExportProgress(0)
-        showStatus("Exporting 0%…")
-        exporter.start { [weak self] progress in
-            self?.controlBar.setExportProgress(progress)
-            self?.showStatus("Exporting \(Int(progress * 100))%…")
-        } completion: { [weak self] error in
-            guard let self else { return }
-            finishExport(error)
-            guard error == nil else { return }
-            let seconds = range.upperBound - range.lowerBound
-            let toast = ExportToast(title: "Exported \(destination.lastPathComponent)",
-                                    detail: "\(count) frames, \(String(format: "%.2f", seconds)) s, in \(destination.deletingLastPathComponent().lastPathComponent)",
-                                    isStack: false, reveal: [destination])
-            showToast(toast)
-            // Read the first frame back from the new file, so the toast shows what the clip starts on.
-            Task { @MainActor [weak toast] in
-                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
-                generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: 320, height: 320)
-                generator.requestedTimeToleranceBefore = .zero
-                generator.requestedTimeToleranceAfter = .zero
-                toast?.image = try? await generator.image(at: .zero).image
-            }
-        }
-    }
-
-    /// Save each frame from the in frame to the out frame as a PNG file in a folder.
-    /// The file name is a prefix and the frame number. The number has as many digits as
-    /// the frame count of the video, with leading zeros, so all names have the same length.
-    @objc func exportMarkedFrames(_ sender: Any?) {
-        guard cancelExport == nil, let window, let index = frameIndex,
-              let inPoint = navigator.inPoint, let outPoint = navigator.outPoint,
-              let count = navigator.markedFrameCount else { return }
-        player.pause()
-
-        let first = index.frame(at: inPoint) + 1, last = index.frame(at: outPoint) + 1
-        let digits = String(index.count).count
-        let accessory = FramePrefixView(prefix: "\(url.deletingPathExtension().lastPathComponent)-",
-                                        exampleFrame: first, digits: digits)
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.directoryURL = url.deletingLastPathComponent()
-        panel.message = "Choose a folder for \(count) PNG files, frames \(first) to \(last)."
-        panel.prompt = "Export"
-        panel.accessoryView = accessory
-        panel.isAccessoryViewDisclosed = true
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let folder = panel.url, let self else { return }
-            let prefix = accessory.prefix
-            let fileName = { (time: Double) in
-                prefix + FramePrefixView.number(index.frame(at: time) + 1, digits: digits) + ".png"
-            }
-            let existing = (first...last).filter { frame in
-                FileManager.default.fileExists(atPath: folder.appendingPathComponent(fileName(index.times[frame - 1])).path)
-            }.count
-            guard existing > 0 else {
-                exportFrames(from: inPoint, through: outPoint, count: count, into: folder, fileName: fileName)
-                return
-            }
-            // The open panel is still closing. Show the question after it.
-            DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = existing == 1 ? "Replace 1 file?" : "Replace \(existing) files?"
-                alert.informativeText = "\(folder.lastPathComponent) already has PNG files with these names."
-                alert.addButton(withTitle: "Replace")
-                alert.addButton(withTitle: "Cancel")
-                alert.beginSheetModal(for: window) { [weak self] response in
-                    guard response == .alertFirstButtonReturn else { return }
-                    self?.exportFrames(from: inPoint, through: outPoint, count: count, into: folder, fileName: fileName)
-                }
-            }
-        }
-    }
-
-    private func exportFrames(from start: Double, through end: Double, count: Int, into folder: URL,
-                              fileName: @escaping (Double) -> String) {
-        let stop = StopFlag()
-        cancelExport = stop.set
-        controlBar.setExportProgress(0)
-        showStatus("Exporting frame 0 of \(count)…")
-        let source = url
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result {
-                try FrameGrabber.grab(source, at: start, before: 0, after: .max, through: end, into: folder,
-                                      fileName: fileName) { saved in
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, !stop.isSet else { return }
-                        controlBar.setExportProgress(Double(saved) / Double(count))
-                        showStatus("Exporting frame \(saved) of \(count)…")
-                    }
-                    return !stop.isSet
-                }
-            }
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let frames):
-                    self?.finishExport(nil)
-                    self?.showToast(ExportToast(
-                        title: frames.count == 1 ? "Exported 1 frame" : "Exported \(frames.count) frames",
-                        detail: "\(frames.first?.url.lastPathComponent ?? "") and on, in \(folder.lastPathComponent)",
-                        isStack: frames.count > 1, reveal: frames.first.map { [$0.url] } ?? [folder]),
-                        image: frames.first.flatMap { Self.thumbnail(of: $0.url) })
-                case .failure(let error):
-                    self?.finishExport(error)
-                }
-            }
-        }
-    }
-
-    /// A success clears the status text. The toast announces it.
-    private func finishExport(_ error: Error?) {
-        cancelExport = nil
-        controlBar.setExportProgress(nil)
-        switch error {
-        case nil: window?.subtitle = ""
-        case is CancellationError: showStatus("Export canceled")
-        case let error?: showExportError(error.localizedDescription)
-        }
-    }
+    @objc func exportMarkedFrames(_ sender: Any?) { exports.exportFrames() }
 
     /// A new toast replaces the one on screen.
-    private func showToast(_ toast: ExportToast, image: CGImage? = nil) {
+    private func showToast(_ toast: ExportToast, image: CGImage?) {
         content.toast?.close()
         toast.image = image
         toast.onDismiss = { [weak self, weak toast] in
@@ -470,24 +326,6 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         content.toast = toast
         content.layoutSubtreeIfNeeded()
         toast.present()
-    }
-
-    /// A small image of a PNG file, for the toast.
-    private static func thumbnail(of url: URL) -> CGImage? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceThumbnailMaxPixelSize: 320,
-        ] as CFDictionary)
-    }
-
-    private func showExportError(_ message: String) {
-        guard let window else { return }
-        window.subtitle = ""
-        let alert = NSAlert()
-        alert.messageText = "Cannot export"
-        alert.informativeText = message
-        alert.beginSheetModal(for: window)
     }
 
     // MARK: - Copy frames
@@ -522,10 +360,10 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(exportMarkedRange(_:)):
-            menuItem.title = cancelExport == nil ? "Export In to Out…" : "Cancel Export"
-            return cancelExport != nil || (frameIndex != nil && navigator.markedRange != nil)
+            menuItem.title = exports.isRunning ? "Cancel Export" : "Export In to Out…"
+            return exports.isRunning || exports.canExport
         case #selector(exportMarkedFrames(_:)):
-            return cancelExport == nil && !isCopying && frameIndex != nil && navigator.markedRange != nil
+            return !exports.isRunning && !isCopying && exports.canExport
         case #selector(copy(_:)), #selector(copyFramesAroundPause(_:)):
             return !isCopying && hasVideo
         case #selector(copyMarkedFrames(_:)):
