@@ -68,6 +68,9 @@ enum MainMenu {
         menu.addItem(item("Go to In", #selector(PlayerWindowController.goToIn(_:)), "i", [.shift]))
         menu.addItem(item("Go to Out", #selector(PlayerWindowController.goToOut(_:)), "o", [.shift]))
         menu.addItem(item("Clear In and Out", #selector(PlayerWindowController.clearMarks(_:)), "x", [.option]))
+        menu.addItem(.separator())
+        menu.addItem(item("Set Bookmark", #selector(PlayerWindowController.setBookmark(_:)), "b", []))
+        menu.addItem(item("Play from Bookmark", #selector(PlayerWindowController.playFromBookmark(_:)), "b", [.shift]))
         return menu
     }
 

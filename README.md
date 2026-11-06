@@ -63,6 +63,15 @@ The control bar shows the current speed during the drag.
 - ⌥⌘C copies all frames from In to Out. Reel asks first when the range has more than 100 frames.
 - The control bar shows the marks on the playhead track.
 
+### Bookmark
+
+- B sets the bookmark at the current frame. Playback does not stop.
+- ⇧B goes to the bookmark and plays from there. It also starts playback when the video is paused.
+- A new bookmark replaces the old one.
+- A cyan flag marks the bookmark on the playhead track.
+
+Use the bookmark to watch the start of a segment again and again.
+
 ## Keyboard shortcuts
 
 | Key | Action |
@@ -77,6 +86,8 @@ The control bar shows the current speed during the drag.
 | I / O | Set the In mark or the Out mark |
 | ⇧I / ⇧O | Go to the In mark or the Out mark |
 | ⌥X | Clear the In and Out marks |
+| B | Set the bookmark |
+| ⇧B | Play from the bookmark |
 | ⌘C | Copy the current frame |
 | ⇧⌘C | Copy the current frame and 5 frames on each side |
 | ⌥⌘C | Copy the frames from In to Out |

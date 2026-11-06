@@ -28,6 +28,10 @@ final class ControlBar: NSView {
         slider.marks = (start, end)
     }
 
+    func setBookmark(_ time: Double?) {
+        slider.bookmark = time
+    }
+
     /// 0...1 while an export runs. The marked range on the slider fills as the export runs.
     func setExportProgress(_ progress: Double?) {
         slider.exportProgress = progress
@@ -225,6 +229,14 @@ final class ScrubSlider: NSSlider {
         }
     }
 
+    var bookmark: Double? {
+        get { (cell as? ScrubSliderCell)?.bookmark }
+        set {
+            (cell as? ScrubSliderCell)?.bookmark = newValue
+            needsDisplay = true
+        }
+    }
+
     var exportProgress: Double? {
         get { (cell as? ScrubSliderCell)?.exportProgress }
         set {
@@ -290,17 +302,24 @@ final class ScrubSlider: NSSlider {
 ///
 /// A band joins the marks. The in mark is a "[" bracket and the out mark is a "]" bracket,
 /// taller than the bar. While an export runs, the band dims and fills from in to out.
+/// The bookmark is a cyan flag.
 final class ScrubSliderCell: NSSliderCell {
     var marks: (in: Double?, out: Double?) = (nil, nil)
+    var bookmark: Double?
     var exportProgress: Double?
 
     override func drawBar(inside rect: NSRect, flipped: Bool) {
         super.drawBar(inside: rect, flipped: flipped)
-        guard maxValue > minValue, marks.in != nil || marks.out != nil else { return }
+        guard maxValue > minValue else { return }
         let travel = rect.width - knobThickness
         func x(_ value: Double) -> CGFloat {
             (rect.minX + knobThickness / 2 + CGFloat((value - minValue) / (maxValue - minValue)) * travel).rounded()
         }
+        if let bookmark {
+            NSColor.systemCyan.setFill()
+            flag(at: x(bookmark), in: rect, flipped: flipped).fill()
+        }
+        guard marks.in != nil || marks.out != nil else { return }
         let start = marks.in.map(x), end = marks.out.map(x)
         let left = start ?? end!, right = end ?? start!
         let band = NSRect(x: left, y: rect.midY - 2, width: max(right - left, 0), height: 4)
@@ -319,6 +338,22 @@ final class ScrubSliderCell: NSSliderCell {
         color.setFill()
         if let start { bracket(at: start, opening: true, in: rect).fill() }
         if let end { bracket(at: end, opening: false, in: rect).fill() }
+    }
+
+    /// A stem across the bar with a small pennant at the top.
+    private func flag(at x: CGFloat, in rect: NSRect, flipped: Bool) -> NSBezierPath {
+        let height: CGFloat = 14, stem: CGFloat = 2, pennant: CGFloat = 5
+        let down: CGFloat = flipped ? 1 : -1
+        let top = rect.midY - down * height / 2
+        let stemX = x - stem / 2
+        let path = NSBezierPath(rect: NSRect(x: stemX, y: rect.midY - height / 2, width: stem, height: height))
+        let pennantPath = NSBezierPath()
+        pennantPath.move(to: NSPoint(x: stemX + stem, y: top))
+        pennantPath.line(to: NSPoint(x: stemX + stem + pennant, y: top + down * pennant / 2))
+        pennantPath.line(to: NSPoint(x: stemX + stem, y: top + down * pennant))
+        pennantPath.close()
+        path.append(pennantPath)
+        return path
     }
 
     /// A "[" (opening) or "]" bracket. Its stem is on the mark, and its feet point into the range.

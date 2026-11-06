@@ -22,6 +22,8 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     private var hasVideo = false
     private var frameIndex: FrameIndex?
     private var isCopying = false
+    /// A time to come back to again and again. Setting it does not stop playback.
+    private var bookmark: Double?
     private lazy var exports = ExportCoordinator(
         url: url, player: player, navigator: navigator, controlBar: controlBar,
         window: { [weak self] in self?.window },
@@ -307,6 +309,22 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     @objc func goToIn(_ sender: Any?) { navigator.inPoint.map(navigator.select) }
     @objc func goToOut(_ sender: Any?) { navigator.outPoint.map(navigator.select) }
 
+    // MARK: - Bookmark
+
+    @objc func setBookmark(_ sender: Any?) {
+        let time = navigator.currentTime
+        bookmark = time
+        controlBar.setBookmark(time)
+        showStatus("Bookmark at \(ControlBar.format(time, milliseconds: true))")
+    }
+
+    /// Go to the bookmark and play forward at normal speed, also when playback is paused.
+    @objc func playFromBookmark(_ sender: Any?) {
+        guard let bookmark else { return }
+        player.seek(to: bookmark, exact: true)
+        player.play(forward: true, speed: 1)
+    }
+
     // MARK: - Export
 
     /// While an export runs, the same item cancels it.
@@ -370,6 +388,8 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             return !isCopying && navigator.markedFrameCount != nil
         case #selector(previousChange(_:)), #selector(nextChange(_:)), #selector(markIn(_:)), #selector(markOut(_:)):
             return hasVideo
+        case #selector(playFromBookmark(_:)):
+            return bookmark != nil
         case #selector(goToIn(_:)):
             return navigator.inPoint != nil
         case #selector(goToOut(_:)):
