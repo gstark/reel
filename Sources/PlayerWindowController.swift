@@ -31,6 +31,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         showStatus: { [weak self] in self?.showStatus($0) },
         showToast: { [weak self] in self?.showToast($0, image: $1) })
     private var keyMonitor: Any?
+    private let wheel = ControlWheel()
 
     /// The window frame before the strip opened, and the frame after.
     private var stripGrowth: (before: NSRect, after: NSRect)?
@@ -74,10 +75,24 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             controlBar.setMarks(in: navigator.inPoint, out: navigator.outPoint)
         }
 
+        wheel.isPaused = { [weak player] in player?.isPaused ?? true }
+        wheel.speed = { [weak player] in player?.playbackSpeed ?? 1 }
+        wheel.isEnabled = { [weak self] action in
+            self?.validateMenuItem(NSMenuItem(title: "", action: action, keyEquivalent: "")) ?? false
+        }
+        wheel.perform = { [weak self] action in NSApp.sendAction(action, to: self, from: self) }
+
         // J, K, and L need key-up events, which menu items do not get.
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-            guard let self, event.window === self.window, shuttle.handle(event) else { return event }
-            return nil
+        // The left Control key alone opens the control wheel, which needs modifier events.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            if event.type == .flagsChanged {
+                controlKeyChanged(event)
+                return event
+            }
+            // A key closes the wheel, so Control shortcuts such as ⌃⌘F work as before.
+            if event.type == .keyDown { closeWheel() }
+            return shuttle.handle(event) ? nil : event
         }
 
         player.onStateChange = { [weak self] in self?.playerStateChanged() }
@@ -161,6 +176,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
 
     private func playerStateChanged() {
         controlBar.update()
+        wheel.refresh()
         navigator.playerStateChanged()
         updateStrip()
     }
@@ -220,6 +236,29 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         }
     }
 
+    // MARK: - Control wheel
+
+    private static let leftControlKeyCode: UInt16 = 59
+
+    /// The wheel opens while the left Control key is the only modifier held.
+    private func controlKeyChanged(_ event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if event.keyCode == Self.leftControlKeyCode, modifiers.contains(.control),
+           modifiers.intersection([.command, .option, .shift]).isEmpty {
+            openWheel()
+        } else {
+            closeWheel()
+        }
+    }
+
+    private func openWheel() {
+        guard let window, wheel.superview == nil, window.attachedSheet == nil else { return }
+        let pointer = window.mouseLocationOutsideOfEventStream
+        wheel.open(in: content, at: content.frame.contains(pointer) ? pointer : nil)
+    }
+
+    private func closeWheel() { wheel.close() }
+
     // MARK: - Status
 
     /// Show a short text under the window title. Text that ends without "…" goes away after 3 seconds.
@@ -278,6 +317,8 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
     func windowDidChangeScreenProfile(_ notification: Notification) {
         videoView.useColorProfile(of: window?.screen)
     }
+
+    func windowDidResignKey(_ notification: Notification) { closeWheel() }
 
     func windowWillClose(_ notification: Notification) {
         exports.cancel()

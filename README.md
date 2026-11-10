@@ -81,6 +81,20 @@ Use the bookmark to watch the start of a segment again and again.
 - Reel remembers the speed. New windows open at the last speed that you chose.
 - While playback runs at a speed other than 1×, the speed shows under the window title.
 
+## Control wheel
+
+Hold the left Control key to open the control wheel under the pointer. Release the key to close it.
+
+- The middle button plays or pauses.
+- The buttons on the left go back, and the buttons on the right go forward. They skip 30 seconds, skip 5 seconds, or step one frame.
+- The top button copies the current frame and 5 frames on each side.
+- The bottom buttons set the playback speed. The tortoise is slower, the hare is faster, and the middle button shows the speed. Click the middle button to go back to 1×.
+- Each button gets the full slice of the wheel in its direction. Move the pointer toward a button and click.
+- The wheel stays open after a click, so you can click a button again and again.
+- A key press or another modifier key closes the wheel, so Control shortcuts such as ⌃⌘F still work.
+
+While the wheel is open, a Control-click does not open a context menu. A right-click still does.
+
 ## Keyboard shortcuts
 
 | Key | Action |
@@ -103,6 +117,7 @@ Use the bookmark to watch the start of a segment again and again.
 | ⇧⌘C | Copy the current frame and 5 frames on each side |
 | ⌥⌘C | Copy the frames from In to Out |
 | ⌃⌘F | Full screen |
+| Left Control (hold) | Control wheel |
 
 The control bar has buttons for play, the 5 and 30 second skips, the frame steps, and ⇧⌘C. The Playback menu lists all the commands.
 
