@@ -9,6 +9,8 @@ final class MPVPlayer {
     private(set) var duration: Double = 0
     private(set) var isPaused = false
     private(set) var speed: Double = 1
+    /// The speed for normal playback. Play, stop, and the first J or L press use it.
+    private(set) var playbackSpeed: Double = 1
     /// False while mpv plays backward (`play-direction=backward`).
     private(set) var isForward = true
     private(set) var videoSize: CGSize?
@@ -67,9 +69,15 @@ final class MPVPlayer {
         command("loadfile", url.isFileURL ? url.path : url.absoluteString)
     }
 
-    /// Play resumes forward at normal speed.
+    /// Play resumes forward at the playback speed.
     func togglePause() {
-        if isPaused { play(forward: true, speed: 1) } else { pause() }
+        if isPaused { play(forward: true, speed: playbackSpeed) } else { pause() }
+    }
+
+    /// Playback at the old playback speed changes to the new one. Faster J and L playback stays as it is.
+    func setPlaybackSpeed(_ value: Double) {
+        if speed == playbackSpeed { command("set", "speed", String(value)) }
+        playbackSpeed = value
     }
 
     func play(forward: Bool, speed: Double) {
@@ -78,10 +86,10 @@ final class MPVPlayer {
         command("set", "pause", "no")
     }
 
-    /// Pause and go back to normal speed.
+    /// Pause and go back to the playback speed.
     func stop() {
         pause()
-        if speed != 1 { command("set", "speed", "1") }
+        if speed != playbackSpeed { command("set", "speed", String(playbackSpeed)) }
     }
 
     func pause() {

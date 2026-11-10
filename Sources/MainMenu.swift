@@ -71,6 +71,22 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Set Bookmark", #selector(PlayerWindowController.setBookmark(_:)), "b", []))
         menu.addItem(item("Play from Bookmark", #selector(PlayerWindowController.playFromBookmark(_:)), "b", [.shift]))
+        menu.addItem(.separator())
+        menu.addItem(submenu(speedMenu()))
+        return menu
+    }
+
+    private static func speedMenu() -> NSMenu {
+        let menu = NSMenu(title: "Speed")
+        menu.addItem(item("Faster", #selector(PlayerWindowController.increaseSpeed(_:)), "]", []))
+        menu.addItem(item("Slower", #selector(PlayerWindowController.decreaseSpeed(_:)), "[", []))
+        menu.addItem(item("Normal Speed", #selector(PlayerWindowController.resetSpeed(_:)), "\\", []))
+        menu.addItem(.separator())
+        for speed in PlaybackSpeed.steps {
+            let speedItem = item(PlaybackSpeed.label(speed), #selector(PlayerWindowController.setSpeed(_:)), "", [])
+            speedItem.representedObject = speed
+            menu.addItem(speedItem)
+        }
         return menu
     }
 

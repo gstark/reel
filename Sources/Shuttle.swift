@@ -2,7 +2,7 @@ import AppKit
 
 /// The J, K, and L keys, as in video editors.
 ///
-/// - L plays forward. Each press doubles the speed. J does the same backward.
+/// - L plays forward at the playback speed. Each press doubles the speed. J does the same backward.
 /// - K stops.
 /// - With K held, a tap on J or L steps one frame. A held J or L plays at quarter speed until it is released.
 ///
@@ -44,7 +44,7 @@ final class Shuttle {
 
     private func shuttle(forward: Bool) {
         let isRunning = !player.isPaused && player.isForward == forward
-        player.play(forward: forward, speed: isRunning ? min(player.speed * 2, Self.maximumSpeed) : 1)
+        player.play(forward: forward, speed: isRunning ? min(player.speed * 2, Self.maximumSpeed) : player.playbackSpeed)
     }
 
     private func keyDown(_ key: String) {

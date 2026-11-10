@@ -84,6 +84,7 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         player.onVideoSize = { [weak self] in self?.videoSizeChanged($0) }
         player.onFileLoaded = { [weak self] in self?.fileLoaded() }
         player.onError = { [weak self] in self?.failed($0) }
+        player.setPlaybackSpeed(PlaybackSpeed.saved)
         player.load(url)
 
         Task { @MainActor [weak self] in
@@ -318,11 +319,30 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
         showStatus("Bookmark at \(ControlBar.format(time, milliseconds: true))")
     }
 
-    /// Go to the bookmark and play forward at normal speed, also when playback is paused.
+    /// Go to the bookmark and play forward at the playback speed, also when playback is paused.
     @objc func playFromBookmark(_ sender: Any?) {
         guard let bookmark else { return }
         player.seek(to: bookmark, exact: true)
-        player.play(forward: true, speed: 1)
+        player.play(forward: true, speed: player.playbackSpeed)
+    }
+
+    // MARK: - Speed
+
+    /// The menu item carries the speed.
+    @objc func setSpeed(_ sender: Any?) {
+        guard let speed = (sender as? NSMenuItem)?.representedObject as? Double else { return }
+        changeSpeed(to: speed)
+    }
+
+    @objc func increaseSpeed(_ sender: Any?) { PlaybackSpeed.faster(than: player.playbackSpeed).map(changeSpeed) }
+    @objc func decreaseSpeed(_ sender: Any?) { PlaybackSpeed.slower(than: player.playbackSpeed).map(changeSpeed) }
+    @objc func resetSpeed(_ sender: Any?) { changeSpeed(to: 1) }
+
+    /// New windows also open at this speed.
+    private func changeSpeed(to speed: Double) {
+        player.setPlaybackSpeed(speed)
+        PlaybackSpeed.saved = speed
+        showStatus("Speed \(PlaybackSpeed.label(speed))")
     }
 
     // MARK: - Export
@@ -390,6 +410,15 @@ final class PlayerWindowController: NSWindowController, NSWindowDelegate, NSMenu
             return hasVideo
         case #selector(playFromBookmark(_:)):
             return bookmark != nil
+        case #selector(setSpeed(_:)):
+            menuItem.state = menuItem.representedObject as? Double == player.playbackSpeed ? .on : .off
+            return true
+        case #selector(increaseSpeed(_:)):
+            return PlaybackSpeed.faster(than: player.playbackSpeed) != nil
+        case #selector(decreaseSpeed(_:)):
+            return PlaybackSpeed.slower(than: player.playbackSpeed) != nil
+        case #selector(resetSpeed(_:)):
+            return player.playbackSpeed != 1
         case #selector(goToIn(_:)):
             return navigator.inPoint != nil
         case #selector(goToOut(_:)):

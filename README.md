@@ -46,7 +46,7 @@ The control bar shows the current speed during the drag.
 
 ### J, K, and L
 
-- L plays forward. Each press doubles the speed, up to 16×.
+- L plays forward at the playback speed. Each press doubles the speed, up to 16×.
 - J plays backward. Each press doubles the speed, up to 16×.
 - K stops.
 - Hold K and tap J or L to step one frame.
@@ -72,6 +72,15 @@ The control bar shows the current speed during the drag.
 
 Use the bookmark to watch the start of a segment again and again.
 
+## Playback speed
+
+- ] plays faster and [ plays slower. The steps are 0.5×, 0.75×, 1×, 1.25×, 1.5×, 1.75×, 2×, 2.5×, 3×, and 4×.
+- \ goes back to normal speed (1×).
+- Playback > Speed lists all the steps.
+- Space, L, J, and ⇧B play at the playback speed. Each L or J press doubles the speed from there, up to 16×. K goes back to the playback speed.
+- Reel remembers the speed. New windows open at the last speed that you chose.
+- While playback runs at a speed other than 1×, the speed shows under the window title.
+
 ## Keyboard shortcuts
 
 | Key | Action |
@@ -88,6 +97,8 @@ Use the bookmark to watch the start of a segment again and again.
 | ⌥X | Clear the In and Out marks |
 | B | Set the bookmark |
 | ⇧B | Play from the bookmark |
+| [ / ] | Slower or faster playback |
+| \ | Normal playback speed |
 | ⌘C | Copy the current frame |
 | ⇧⌘C | Copy the current frame and 5 frames on each side |
 | ⌥⌘C | Copy the frames from In to Out |
